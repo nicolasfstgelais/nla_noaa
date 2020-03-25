@@ -9,49 +9,72 @@ library("lubridate")
 stations=read.csv("data/raw/transform_station_output.csv")
 temporal=read.csv("data/raw/transform_temporal_output.csv")
 
-sampling_date=data.frame(NLA_ID=stringr::str_sub(temporal$X, 1, -12),
+sampling_date=data.frame(NLA_ID=temporal$X,station=stringr::str_sub(temporal$X, 1, -12),
                          date=stringr::str_sub(temporal$X, -10, -1))
 
-location=data.frame(NLA_ID=stations$station,latitude=stations$latitude,longitude=stations$longitude)
+location=data.frame(station=stations$station,latitude=stations$latitude,longitude=stations$longitude)
 
 sampling_date_location=merge(sampling_date,location)
 
+#to init
 
-output <- data.frame()
-for(i in 1:nrow(sampling_date_location))
+#output_prcp <- data.frame(row.names = sampling_date_location$NLA_ID)
+#save(output_prcp,file="data/interim/output_prcp")
+
+#for(i in 1:nrow(sampling_date_location))
+for(i in 1:2482)
 {
-
+  limit=1
+  load("data/interim/output_prcp")
+  print(i)
+  # if already in the data frame skip
+  if(as.character(sampling_date_location$NLA_ID[i])%in%output_prcp$NLA_ID){
+    # if a line have any missing information run but with more stations
+    if(any(is.na(output_prcp[i,]))){limit=10}else{next}
+    }
   
   lat_lon_df <- data.frame(id =as.character(sampling_date_location$NLA_ID[i]), 
                            latitude = sampling_date_location$latitude[i], 
                            longitude = sampling_date_location$longitude[i])
   
-  met_station=meteo_nearby_stations( lat_lon_df,station_data = station_data,radius = 30,var = c("PRCP","TMAX","TMIN","TOBS"),year_min=year(d_sampling),year_max=year(d_sampling),limit=1)
-  
- 
+  met_station=meteo_nearby_stations( lat_lon_df,station_data = station_data,radius = 100
+                                     ,var = c("PRCP"),year_min=year(d_sampling),
+                                     year_max=year(d_sampling),limit=limit)
   
   d_sampling=as.Date(sampling_date_location$date[i])
-  d_before=d_sampling
-  day(d_before) <- day(d_before)-1
-  month(d_before) <- lubridate::month(d_before) - 1
+  d_min=d_sampling
+  # when 31th, get an error when month-1 so first remove 1 day
+  day(d_min) <- day(d_min)-4
   
+  d_min_1m=d_min;month( d_min_1m) <- month(d_min) - 1
+  d_min_5m=d_min;month(d_min_5m) <- month(d_min) - 5
+  d_min_7d=d_min;day(d_min_7d) <- day(d_min) - 3
   
-  t=meteo_pull_monitors(met_station[[1]]$id,date_min=d_before,date_max=d_sampling)
   
 
+  t_1m=meteo_pull_monitors(met_station[[1]]$id,date_min=d_min_1m,date_max=d_sampling,var="PRCP",)
+  
+  t_5m=meteo_pull_monitors(met_station[[1]]$id,date_min=d_min_5m,date_max=d_sampling,var="PRCP")
+
+  t_7d=meteo_pull_monitors(met_station[[1]]$id,date_min=d_min_7d,date_max=d_sampling,var="PRCP")
+  
+  output_prcp[output_prcp$NLA_ID==sampling_date_location$NLA_ID[i],]=
+            data.frame(NLA_ID = sampling_date_location$NLA_ID[i],  
+                             prcp_max_1m=max(t_1m$prcp,na.rm = T),
+                             prcp_mean_1m=mean(t_1m$prcp,na.rm = T),
+                             prcp_max_5m=max(t_5m$prcp,na.rm = T),
+                             prcp_mean_5m=mean(t_5m$prcp,na.rm = T),
+                             prcp_max_7d=max(t_7d$prcp,na.rm = T),
+                             prcp_mean_7d=mean(t_7d$prcp,na.rm = T)
+                             )
   
   
-  output <- rbind(output,                  
-                  data.frame(NLA_ID = sampling_date_location$NLA_ID[i],  
-                             prcp_max_1m=max(t$prcp,na.rm = T),
-                             prcp_mean_1m=mean(t$prcp,na.rm = T),
-                             temp_max_1m=max(t$tmax,na.rm = T),
-                             temp_min_1m=min(t$tmin,na.rm = T),
-                             temp_mean_1m=mean(t$tmax,na.rm = T)
-                  ))
+  
+  save(output_prcp,file="data/interim/output_prcp")
+  
   
 }
 
 
 
-write.csv(output,"data/output.csv")
+#write.csv(output,"data/output.csv")
